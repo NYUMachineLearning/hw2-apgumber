@@ -1,0 +1,234 @@
+---
+title: "Regression Homework - homework 2"
+author: "Alisha Gumber"
+date: "Fall 2019"
+output:
+  html_document:
+    df_print: paged
+fontsize: 11pt
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = T)
+```
+
+# Lab Section
+
+In this lab, we will go over regression. We will be using the caret package in R. https://topepo.github.io/caret/train-models-by-tag.html
+
+# Perfomance Metrics 
+
+## Residual 
+
+Deviation of the observed value to the estimated value (sample mean)
+$$residual=y_i - \hat{y_i}$$
+where $\hat{y_i}$ is the estimated value
+
+## Mean Squared Error (MSE)
+
+$$MSE=\frac{1}{n}\sum_{i=1}^{n}(y_i - \hat{y_i})^2$$
+
+## Root Mean Squared Error (RMSE)
+Same units as original data.
+
+$$RMSE=\sqrt{MSE}$$
+
+## L2 regularization : Ridge regression. Regularize by adding the sum of the coefficients, squared, to the function. 
+
+$$Ridge Regression=\sum_{i=1}^{n}(y_i - w_0 - \sum_{j=1}^{p}w_jx_{ij})^2 + \lambda\sum_{j=1}^p(w_j)^2$$
+
+## L1 regularization : Lasso Regression. Regularize by adding the sum of the absolute value of the coefficients to the model. Coefficient estimates may be pushed to zero -- Lasso can perform variable selection
+
+$$Lasso Regression=\sum_{i=1}^{n}(y_i - w_0 - \sum_{j=1}^{p}w_jx_{ij})^2 + \lambda\sum_{j=1}^p|w_j|$$
+
+
+\newpage
+
+### The broad steps of Machine learning in R. 
+
+1. Split the data into training and test. Set test aside. 
+
+2. Fit a good model to the training data. 
+
+3. See how your model did on the training data.
+
+4. Test how your model performs on the test data. 
+
+# Regression
+
+```{r, include=FALSE}
+library(caret)
+library(MASS)
+library(ggplot2)
+library(dplyr)
+library(ggfortify)
+library(glmnet)
+
+
+#Mauna Loa CO2 concentrations
+data(airquality)
+```
+
+```{r}
+#View(airquality)
+```
+
+1. Split data into training and test set (75% in train set, 25% in test set)
+
+```{r}
+## 75% of the sample size
+
+sample_size <- floor(0.75 * nrow(airquality))
+
+## set the seed to make partition reproducible
+set.seed(115)
+training <- sample(seq_len(nrow(airquality)), size = sample_size)
+
+train_regression = airquality[training, ]
+test_regression = airquality[-training, ]
+head(train_regression) # 114 observations
+head(test_regression) # 39 observatons
+```
+
+
+### Linear Regression
+
+* Assumes a linear relationship. 
+* Independent variables should not be correlated (no mulitcollinearity)
+* The number of observations should be greater than the number of independent variables.
+
+
+$$RSS=\sum(y_i - \hat{y_i})^2$$
+We will predict the response of the Temperature based on Wind. 
+
+This is the data we will fit a linear model to. 
+```{r}
+# response of temp based on wind means y is dependent on x so x = wind (independent variable) and y = temp (dependent variable)
+train_plot <- ggplot(data = train_regression) +
+   geom_point(aes(x=Wind, y=Temp)) + 
+   theme_bw()
+train_plot
+```
+
+2. Create and fit a linear model to predict Temperature from Wind using the training set
+
+```{r}
+#help(train)
+
+linear_regression <- train(Temp ~ Wind, data=train_regression, method = "lm")
+summary(linear_regression)
+```
+
+
+3. Vizualize how your model performed on the train data by plotting the regression line on top of the train data points. 
+```{r}
+# use intercept and slope values from summary of the linear regression model
+# y = 89.9657 + -1.2198x 
+train_plot + geom_abline(intercept = 89.9657, slope = -1.2198, col="red") 
+# + geom_smooth(method = 'lm', color=)
+```
+
+
+4. Explore how the model performs on the test data. For Linear Regression:
+
+* The residuals should be close to zero.
+* There should be equal variance around the regression line (homoscedasticity).
+* Residuals should be normally distributed.
+* Independent variables and residuals should not be correlated.
+
+4 a) See how the model performs on the test data
+```{r}
+#help(predict)
+linear_predict <- predict(linear_regression, test_regression)
+linear_predict
+```
+
+4 b) Look at the residuals. Are they close to zero?
+```{r}
+#look at the median residual value. Close to zero is best
+summary(linear_regression)
+```
+**The median redidual is 1.756, which is pretty close to zero, but there is a relatively large range of residuals.**
+
+```{r}
+# on my own: calculating error
+error <- linear_predict - test_regression$Temp
+RMSE = sqrt(mean(error^2))
+RMSE
+```
+
+
+4 c) Plot predicted temperature vs observed temperature. A strong model should show a strong correlation
+```{r}
+plot(test_regression$Temp, linear_predict, main="Plot of predicted temp vs. observed temp")
+
+```
+
+
+```{r}
+cor.test(test_regression$Temp, linear_predict)
+```
+
+
+4 d) Visualize the predicted values in relation to the real data points. Look for homoscedasticity
+```{r}
+# Extract coefficients from the model
+coef1 <- linear_regression$finalModel$coefficients[1]
+coef2 <- linear_regression$finalModel$coefficients[2]
+
+# plot the regression line on the predicted values
+plot(x=test_regression$Wind, y=linear_predict, pch=1, main="Regression line on predicted values") 
+abline(coef1, coef2, col="red")
+
+# plot the original test values
+ggplot(test_regression) +
+  geom_point(aes(x=test_regression$Wind, y=linear_predict, col="Predicted")) +
+  geom_point(aes(x= Wind, y= Temp, col="Observed")) +
+  geom_segment(aes(x=Wind, y=Temp, xend=Wind, yend=linear_predict))
+```
+
+
+4 e) Residuals should be normally distributed. Plot the density of the residuals
+```{r}
+residuals_lin <- residuals(linear_regression)
+head(residuals_lin)
+
+ggplot(x=residuals_lin) +
+  geom_density(aes(residuals_lin))
+```
+
+
+4 f) Independent variables and residuals should not be correlated
+```{r}
+cor.test(train_regression$Wind, resid(linear_regression))
+# Correlation test shows indepdent variables and residuals are not correlated
+```
+
+### Linear Regression with Regularization
+
+5. Create a linear model using L1 or L2 regularization to predict Temperature from Wind and Month variables. Plot your predicted values and the real Y values on the same plot. 
+
+```{r}
+# cross validation with sample of 10 observations
+control =  trainControl(method = "cv", 10)
+
+# train model with ridge regression (L2)
+ridge_regression <- train(Temp ~ Wind + Month, data = train_regression,
+                          method = 'ridge', trControl= control) 
+ridge_regression
+
+# examine residuals
+ridge_test_predict <- predict(ridge_regression, newdata = test_regression)
+
+#plot the predicted values vs the observed values
+plot_ridge_test_pred <- data.frame(Temp_test_pred = ridge_test_predict, 
+                                   Observed_Temp = test_regression$Temp)
+ggplot(data = plot_ridge_test_pred) +
+  geom_point(aes(x=Observed_Temp, y = Temp_test_pred)) + 
+  ggtitle("True Temp Value vs Predicted Temp Value with Ridge Regression") +
+  theme_bw()
+
+#median residual value should be close to zero
+median(resid(ridge_regression))
+```
+
